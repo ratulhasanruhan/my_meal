@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Settings · {{ APP_NAME }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Settings</h1>
+  <p class="page-sub">Meal rate and payments to your catering service.</p>
+</div>
+
+<div class="stats" style="margin-top:0">
+  <div class="stat">
+    <p class="stat__label">Current rate</p>
+    <p class="stat__value">{{ CURRENCY }}{{ current_rate|floatformat:0 }}</p>
+    <p class="stat__foot">per meal</p>
+  </div>
+  <div class="stat">
+    <p class="stat__label">Total cost</p>
+    <p class="stat__value">{{ CURRENCY }}{{ lifetime_cost|floatformat:0 }}</p>
+  </div>
+  <div class="stat">
+    <p class="stat__label">Total paid</p>
+    <p class="stat__value">{{ CURRENCY }}{{ paid|floatformat:0 }}</p>
+  </div>
+  <div class="stat">
+    <p class="stat__label">{% if balance < 0 %}You owe{% else %}Credit{% endif %}</p>
+    <p class="stat__value {% if balance < 0 %}stat__value--bad{% else %}stat__value--good{% endif %}">
+      {{ CURRENCY }}{{ balance_abs|floatformat:0 }}
+    </p>
+  </div>
+</div>
+
+<div class="grid grid--2 mt-16">
+  <section class="card">
+    <h2 class="card__title">Meal rate</h2>
+    <p class="card__sub">New rates apply from their start date forward — past meals keep the price they were logged at.</p>
+
+    <form method="post" class="mt-16">
+      {% csrf_token %}
+      <div class="form-row form-row--2">
+        <div class="field">
+          <label for="{{ rate_form.price.id_for_label }}">Price per meal ({{ CURRENCY }})</label>
+          {{ rate_form.price }}
+          {{ rate_form.price.errors }}
+        </div>
+        <div class="field">
+          <label for="{{ rate_form.effective_from.id_for_label }}">Effective from</label>
+          {{ rate_form.effective_from }}
+          {{ rate_form.effective_from.errors }}
+        </div>
+      </div>
+      <div class="field">
+        <label for="{{ rate_form.note.id_for_label }}">Note <span class="muted">(optional)</span></label>
+        {{ rate_form.note }}
+      </div>
+      <button class="btn btn--block mt-16" type="submit" name="save_rate" value="1">Save rate</button>
+    </form>
+
+    {% if rates %}
+      <h3 class="section-title mt-24">Rate history</h3>
+      <div class="rows">
+        {% for rate in rates %}
+          <div class="row">
+            <div class="row__main">
+              <p class="row__title">{{ CURRENCY }}{{ rate.price|floatformat:0 }} per meal</p>
+              <p class="row__sub">from {{ rate.effective_from|date:"j M Y" }}{% if rate.note %} · {{ rate.note }}{% endif %}</p>
+            </div>
+            <form method="post" onsubmit="return confirm('Remove this rate?')">
+              {% csrf_token %}
+              <button class="btn btn--sm btn--danger" type="submit" name="delete_rate" value="{{ rate.pk }}">Remove</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2 class="card__title">Payments</h2>
+    <p class="card__sub">Record what you hand over, so dues stay visible.</p>
+
+    <form method="post" class="mt-16">
+      {% csrf_token %}
+      <div class="form-row form-row--2">
+        <div class="field">
+          <label for="{{ payment_form.amount.id_for_label }}">Amount ({{ CURRENCY }})</label>
+          {{ payment_form.amount }}
+          {{ payment_form.amount.errors }}
+        </div>
+        <div class="field">
+          <label for="{{ payment_form.date.id_for_label }}">Date</label>
+          {{ payment_form.date }}
+          {{ payment_form.date.errors }}
+        </div>
+      </div>
+      <div class="field">
+        <label for="{{ payment_form.note.id_for_label }}">Note <span class="muted">(optional)</span></label>
+        {{ payment_form.note }}
+      </div>
+      <button class="btn btn--block mt-16" type="submit" name="save_payment" value="1">Record payment</button>
+    </form>
+
+    {% if payments %}
+      <h3 class="section-title mt-24">Recent payments</h3>
+      <div class="rows">
+        {% for payment in payments %}
+          <div class="row">
+            <div class="row__main">
+              <p class="row__title">{{ CURRENCY }}{{ payment.amount|floatformat:0 }}</p>
+              <p class="row__sub">{{ payment.date|date:"j M Y" }}{% if payment.note %} · {{ payment.note }}{% endif %}</p>
+            </div>
+            <form method="post" onsubmit="return confirm('Remove this payment?')">
+              {% csrf_token %}
+              <button class="btn btn--sm btn--danger" type="submit" name="delete_payment" value="{{ payment.pk }}">Remove</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted mt-16" style="font-size:13px">No payments recorded yet.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

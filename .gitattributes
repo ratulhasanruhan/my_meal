@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Vercel runs this on Linux — CRLF would make the shebang fail.
+*.sh text eol=lf

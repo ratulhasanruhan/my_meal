@@ -1,0 +1,17 @@
+{% comment %}Params: slot, name, date, active, disabled{% endcomment %}
+<button type="button"
+        class="slot-toggle{% if slot == 'dinner' %} slot-toggle--dinner{% endif %}"
+        data-slot="{{ slot }}"
+        data-date="{{ date|date:'Y-m-d' }}"
+        aria-pressed="{{ active|yesno:'true,false' }}"
+        {% if disabled %}disabled{% endif %}>
+  <span class="slot-toggle__check" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 6L9 17l-5-5"/>
+    </svg>
+  </span>
+  <span>
+    <span class="slot-toggle__name">{{ name }}</span><br>
+    <span class="slot-toggle__hint">{{ CURRENCY }}{{ current_rate|floatformat:0 }} per meal</span>
+  </span>
+</button>

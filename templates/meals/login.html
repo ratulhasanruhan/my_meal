@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in · {{ APP_NAME }}{% endblock %}
+
+{% block body %}
+<div class="auth">
+  <div class="auth__card">
+    <div class="auth__brand">
+      <span class="brand__mark" aria-hidden="true">🍽</span>
+      <div>
+        <h1 class="page-title">{{ APP_NAME }}</h1>
+        <p class="page-sub">Sign in to track your meals.</p>
+      </div>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="toast toast--error" style="margin-bottom:16px">
+          {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+        </div>
+      {% endif %}
+
+      <div class="field">
+        <label for="{{ form.username.id_for_label }}">Username</label>
+        <input type="text" name="username" id="{{ form.username.id_for_label }}"
+               autocomplete="username" autofocus required>
+      </div>
+      <div class="field">
+        <label for="{{ form.password.id_for_label }}">Password</label>
+        <input type="password" name="password" id="{{ form.password.id_for_label }}"
+               autocomplete="current-password" required>
+      </div>
+
+      <button class="btn btn--block mt-24" type="submit">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics · {{ APP_NAME }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1 class="page-title">Analytics</h1>
+  <p class="page-sub">
+    {% if empty %}Nothing to chart yet.{% else %}Tracking since {{ tracking_since|date:"j M Y" }}.{% endif %}
+  </p>
+</div>
+
+{% if empty %}
+  <section class="card">
+    <div class="empty">
+      <p class="empty__icon" aria-hidden="true">📊</p>
+      <p class="empty__title">No meals logged yet</p>
+      <p>Mark a few meals on the dashboard and your spending patterns will show up here.</p>
+      <a class="btn mt-16" href="{% url 'dashboard' %}">Go to dashboard</a>
+    </div>
+  </section>
+{% else %}
+
+  <section class="hero">
+    <p class="hero__label">Total spent, all time</p>
+    <p class="hero__value"><span class="cur">{{ CURRENCY }}</span>{{ lifetime_cost|floatformat:0 }}</p>
+    <div class="hero__meta">
+      <span><b>{{ lifetime_meals }}</b> meals</span>
+      <span><b>{{ CURRENCY }}{{ daily_avg|floatformat:0 }}</b> a day on average</span>
+      <span><b>{{ skip_days }}</b> days skipped entirely</span>
+    </div>
+  </section>
+
+  <div class="stats">
+    <div class="stat">
+      <p class="stat__label">Paid to caterer</p>
+      <p class="stat__value">{{ CURRENCY }}{{ paid|floatformat:0 }}</p>
+    </div>
+    <div class="stat">
+      <p class="stat__label">{% if balance < 0 %}You owe{% else %}Credit{% endif %}</p>
+      <p class="stat__value {% if balance < 0 %}stat__value--bad{% else %}stat__value--good{% endif %}">
+        {{ CURRENCY }}{{ balance_abs|floatformat:0 }}
+      </p>
+      <p class="stat__foot">paid − cost</p>
+    </div>
+    <div class="stat">
+      <p class="stat__label">Longest streak</p>
+      <p class="stat__value">{{ best_streak }}</p>
+      <p class="stat__foot">days in a row</p>
+    </div>
+    <div class="stat">
+      <p class="stat__label">Current streak</p>
+      <p class="stat__value">{{ running_streak }}</p>
+      <p class="stat__foot">days in a row</p>
+    </div>
+  </div>
+
+  <section class="card mt-16">
+    <h2 class="card__title">Monthly meal cost</h2>
+    <p class="card__sub">Last 12 months, in {{ CURRENCY }}</p>
+
+    <div class="chart">
+      <div class="columns">
+        {% for t in trend %}
+          <div class="column" title="{{ t.full_label }} — {{ CURRENCY }}{{ t.cost|floatformat:0 }} · {{ t.meals }} meals">
+            {% if forloop.last and t.cost %}
+              <span class="column__cap">{{ CURRENCY }}{{ t.cost|floatformat:0 }}</span>
+            {% endif %}
+            <div class="column__bar{% if not t.cost %} column__bar--empty{% endif %}"
+                 style="height: {% if t.cost %}{% widthratio t.cost max_cost 100 %}{% else %}0{% endif %}%"></div>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="columns-axis" aria-hidden="true">
+        {% for t in trend %}<span>{{ t.label }}</span>{% endfor %}
+      </div>
+    </div>
+
+    <details class="mt-16">
+      <summary class="muted" style="font-size:13px;cursor:pointer">View as table</summary>
+      <div class="rows mt-16">
+        {% for t in trend %}
+          <div class="row">
+            <div class="row__main"><p class="row__title">{{ t.full_label }}</p>
+              <p class="row__sub">{{ t.meals }} meals</p></div>
+            <span class="row__value">{{ CURRENCY }}{{ t.cost|floatformat:0 }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </details>
+  </section>
+
+  <div class="grid grid--2 mt-16">
+    <section class="card">
+      <h2 class="card__title">Meals by weekday</h2>
+      <p class="card__sub">Where your meals actually land</p>
+      <div class="chart bars">
+        {% for w in weekday %}
+          <div class="bar-row" title="{{ w.label }} — {{ w.count }} meals">
+            <span class="bar-row__label">{{ w.label }}</span>
+            <div class="bar-row__track">
+              <div class="bar-row__fill" style="width: {{ w.pct }}%"></div>
+            </div>
+            <span class="bar-row__value">{{ w.count }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="card__title">Lunch vs dinner</h2>
+      <p class="card__sub">Share of all meals taken</p>
+
+      <div class="split">
+        <div class="split__seg split__seg--1" style="width: {{ lunch_pct }}%" title="Lunch — {{ lunch_count }} meals"></div>
+        <div class="split__seg split__seg--2" style="width: {{ dinner_pct }}%" title="Dinner — {{ dinner_count }} meals"></div>
+      </div>
+
+      <div class="split-legend">
+        <span class="legend-item"><span class="legend-key legend-key--1"></span> Lunch · <b>{{ lunch_count }}</b> ({{ lunch_pct }}%)</span>
+        <span class="legend-item"><span class="legend-key legend-key--2"></span> Dinner · <b>{{ dinner_count }}</b> ({{ dinner_pct }}%)</span>
+      </div>
+
+      {% if busiest_month %}
+        <div class="row mt-24" style="border-top:1px solid var(--border);border-bottom:0;padding-top:14px">
+          <div class="row__main">
+            <p class="row__title">Priciest month</p>
+            <p class="row__sub">{{ busiest_month.full_label }} · {{ busiest_month.meals }} meals</p>
+          </div>
+          <span class="row__value">{{ CURRENCY }}{{ busiest_month.cost|floatformat:0 }}</span>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+{% endif %}
+{% endblock %}
