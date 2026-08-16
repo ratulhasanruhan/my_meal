@@ -83,8 +83,6 @@ def dashboard(request):
             "today": today,
             "today_lunch": resolver.quantity(today, Slot.LUNCH) if today <= summary["last"] and today >= summary["first"] else 0,
             "today_dinner": resolver.quantity(today, Slot.DINNER) if today <= summary["last"] and today >= summary["first"] else 0,
-            "today_weekday_name": today.strftime("%A"),
-            "today_weekday": today.weekday(),
             "has_plan": services.tracking_start() is not None,
             "max_quantity": MAX_QUANTITY,
         },
@@ -96,8 +94,7 @@ def dashboard(request):
 def set_meal(request):
     """Set a slot's quantity, either for one day or as a standing rule.
 
-    Body: {date, slot, quantity, scope} where scope is
-    "once" | "onward" | "weekday".
+    Body: {date, slot, quantity, scope} where scope is "once" | "onward".
     """
     try:
         payload = json.loads(request.body or "{}")
@@ -112,7 +109,7 @@ def set_meal(request):
         return JsonResponse({"error": "Unknown slot"}, status=400)
     if not 0 <= quantity <= MAX_QUANTITY:
         return JsonResponse({"error": f"Quantity must be 0–{MAX_QUANTITY}"}, status=400)
-    if scope not in {"once", "onward", "weekday"}:
+    if scope not in {"once", "onward"}:
         return JsonResponse({"error": "Unknown scope"}, status=400)
     if scope == "once" and day > _today():
         return JsonResponse({"error": "Cannot log a meal in the future"}, status=400)
@@ -122,8 +119,7 @@ def set_meal(request):
             date=day, slot=slot, defaults={"quantity": quantity}
         )
     else:
-        weekday = day.weekday() if scope == "weekday" else None
-        services.set_plan_from(day, slot, quantity, weekday)
+        services.set_plan_from(day, slot, quantity)
 
     today = _today()
     summary = services.month_summary(day.year, day.month, today)
@@ -253,7 +249,7 @@ def settings_view(request):
             if plan_form.is_valid():
                 data = plan_form.cleaned_data
                 services.set_plan_from(
-                    data["effective_from"], data["slot"], data["quantity"], data["weekday"]
+                    data["effective_from"], data["slot"], data["quantity"]
                 )
                 messages.success(request, "Meal plan updated.")
                 return redirect("settings")

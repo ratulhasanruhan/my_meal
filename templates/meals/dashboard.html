@@ -119,7 +119,6 @@
                   class="cal-day{% if not day.in_month %} cal-day--muted{% endif %}{% if day.is_today %} cal-day--today{% endif %}{% if day.is_future %} cal-day--future{% endif %}{% if day.overridden %} cal-day--edited{% endif %}"
                   data-date="{{ day.date|date:'Y-m-d' }}"
                   data-label="{{ day.date|date:'l, j F Y' }}"
-                  data-weekday-name="{{ day.date|date:'l' }}"
                   data-lunch="{{ day.lunch }}"
                   data-dinner="{{ day.dinner }}"
                   aria-label="{{ day.date|date:'l, j F' }}">
@@ -164,10 +163,6 @@
         <label class="scope__opt">
           <input type="radio" name="scope" value="onward">
           <span><b>Every day from here</b><small>Becomes your new normal</small></span>
-        </label>
-        <label class="scope__opt">
-          <input type="radio" name="scope" value="weekday">
-          <span><b data-scope-weekday>Every week</b><small>Only this weekday, from here on</small></span>
         </label>
       </div>
     </fieldset>

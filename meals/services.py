@@ -1,8 +1,7 @@
 """Turning the plan + overrides into concrete days, meals and money.
 
-The rule everywhere: an override for a date wins; otherwise the newest
-applicable plan rule wins (a weekday rule beats an every-day rule set on the
-same date); before your first plan starts, nothing is counted.
+The rule everywhere: an override for a date wins; otherwise the newest plan
+rule that has started applies; before your first plan starts, nothing is counted.
 """
 
 import calendar
@@ -41,8 +40,7 @@ class Resolver:
         self.end = end
 
         plans = list(MealPlan.objects.filter(effective_from__lte=end))
-        # Newest rule wins; on the same date a weekday rule beats an every-day one.
-        plans.sort(key=lambda p: (p.effective_from, p.weekday is not None), reverse=True)
+        plans.sort(key=lambda p: p.effective_from, reverse=True)  # newest rule wins
         self._plans = defaultdict(list)
         for plan in plans:
             self._plans[plan.slot].append(plan)
@@ -72,7 +70,7 @@ class Resolver:
         if self.tracking_start is None or day < self.tracking_start:
             return 0
         for plan in self._plans.get(slot, ()):
-            if plan.effective_from <= day and plan.weekday in (None, day.weekday()):
+            if plan.effective_from <= day:
                 return plan.quantity
         return 0
 
@@ -354,20 +352,13 @@ def weekday_breakdown(today: date) -> list[dict]:
     ]
 
 
-def set_plan_from(day: date, slot: str, quantity: int, weekday: int | None) -> MealPlan:
+def set_plan_from(day: date, slot: str, quantity: int) -> MealPlan:
     """Make `quantity` the standing rule for `slot` from `day` onward.
 
-    Replaces any rule with the same scope and start date, and clears per-day
-    overrides after `day` so the new rule actually takes effect.
+    Replaces any rule starting the same day, and clears per-day overrides after
+    `day` so the new rule actually takes effect.
     """
-    MealPlan.objects.filter(slot=slot, weekday=weekday, effective_from=day).delete()
-    plan = MealPlan.objects.create(
-        slot=slot, weekday=weekday, quantity=quantity, effective_from=day
-    )
-
-    stale = MealEntry.objects.filter(date__gte=day, slot=slot)
-    if weekday is not None:
-        # Django's week_day is 1=Sunday..7=Saturday; Python's is 0=Monday..6=Sunday.
-        stale = stale.filter(date__week_day=(weekday + 1) % 7 + 1)
-    stale.delete()
+    MealPlan.objects.filter(slot=slot, effective_from=day).delete()
+    plan = MealPlan.objects.create(slot=slot, quantity=quantity, effective_from=day)
+    MealEntry.objects.filter(date__gte=day, slot=slot).delete()
     return plan

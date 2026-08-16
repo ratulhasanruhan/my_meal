@@ -33,10 +33,8 @@
 <section class="card mt-16">
   <h2 class="card__title">Meal plan</h2>
   <p class="card__sub">
-    Your standing rule — how many meals you take by default, from a date onward. Everything
-    runs off this, so you only touch the calendar when a day is different. Leave the weekday
-    as <em>Every day</em> for your normal routine, or pick one weekday to carve out an exception
-    (say, no lunch on Fridays).
+    Your standing rule — how many meals you take by default, from a date onward.
+    Everything runs off this, so you only touch the calendar when a day is different.
   </p>
 
   {% if not has_plan %}
@@ -61,17 +59,10 @@
         {{ plan_form.quantity.errors }}
       </div>
     </div>
-    <div class="form-row form-row--2">
-      <div class="field">
-        <label for="{{ plan_form.weekday.id_for_label }}">Applies to</label>
-        {{ plan_form.weekday }}
-        {{ plan_form.weekday.errors }}
-      </div>
-      <div class="field">
-        <label for="{{ plan_form.effective_from.id_for_label }}">Starting from</label>
-        {{ plan_form.effective_from }}
-        {{ plan_form.effective_from.errors }}
-      </div>
+    <div class="field">
+      <label for="{{ plan_form.effective_from.id_for_label }}">Starting from</label>
+      {{ plan_form.effective_from }}
+      {{ plan_form.effective_from.errors }}
     </div>
     <button class="btn btn--block mt-16" type="submit" name="save_plan" value="1">Save plan rule</button>
   </form>
@@ -83,7 +74,7 @@
         <div class="row">
           <div class="row__main">
             <p class="row__title">{{ plan.get_slot_display }} ×{{ plan.quantity }}</p>
-            <p class="row__sub">{{ plan.scope_label }}, from {{ plan.effective_from|date:"j M Y" }}</p>
+            <p class="row__sub">Every day, from {{ plan.effective_from|date:"j M Y" }}</p>
           </div>
           <form method="post" onsubmit="return confirm('Remove this rule?')">
             {% csrf_token %}

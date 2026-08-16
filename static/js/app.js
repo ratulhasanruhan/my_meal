@@ -186,9 +186,6 @@
       ? "A future day — changes here become part of your plan."
       : "Adjust the meals, then choose how far the change should reach.";
 
-    var weekdayLabel = sheet.querySelector("[data-scope-weekday]");
-    if (weekdayLabel) weekdayLabel.textContent = "Every " + cell.dataset.weekdayName;
-
     var scopeInput = sheet.querySelector(
       'input[name="scope"][value="' + (presetScope || "once") + '"]'
     );

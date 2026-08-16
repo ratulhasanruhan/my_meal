@@ -10,9 +10,6 @@ class Slot(models.TextChoices):
     DINNER = "dinner", "Dinner"
 
 
-WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-
 class MealRate(models.Model):
     """Price of a single meal, versioned so past months keep their real cost."""
 
@@ -42,16 +39,10 @@ class MealPlan(models.Model):
     """A standing rule: how many meals you take in a slot, from a date onward.
 
     This is what makes the tracker hands-off — you set it once and every day
-    follows it until you say otherwise. `weekday` narrows a rule to one day of
-    the week (e.g. no lunch on Fridays); null means every day.
+    follows it until you say otherwise.
     """
 
     slot = models.CharField(max_length=10, choices=Slot.choices)
-    weekday = models.SmallIntegerField(
-        null=True,
-        blank=True,
-        help_text="0=Monday … 6=Sunday. Leave empty to apply to every day.",
-    )
     quantity = models.PositiveSmallIntegerField(
         default=1,
         validators=[MaxValueValidator(20)],
@@ -64,12 +55,7 @@ class MealPlan(models.Model):
         ordering = ["-effective_from", "slot"]
 
     def __str__(self):
-        scope = "every day" if self.weekday is None else f"every {WEEKDAY_NAMES[self.weekday]}"
-        return f"{self.get_slot_display()} ×{self.quantity} {scope} from {self.effective_from}"
-
-    @property
-    def scope_label(self):
-        return "Every day" if self.weekday is None else f"Every {WEEKDAY_NAMES[self.weekday]}"
+        return f"{self.get_slot_display()} ×{self.quantity} from {self.effective_from}"
 
 
 class MealEntry(models.Model):

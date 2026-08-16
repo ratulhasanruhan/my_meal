@@ -20,9 +20,8 @@ Responsive, light/dark, no frontend build step.
 Three layers, in order of precedence:
 
 1. **A one-day override** — you changed that specific day.
-2. **The plan** — a standing rule like "Dinner ×1 every day from 1 July", or a
-   weekday-scoped one like "Lunch ×0 every Friday". The newest applicable rule
-   wins; on the same date, a weekday rule beats an every-day rule.
+2. **The plan** — a standing rule like "Dinner ×1 every day from 1 July". The
+   newest rule that has started wins.
 3. **Nothing before your plan starts** — turning the app on never back-bills you.
 
 Quantities above 1 are guest meals, and the report prices them separately.

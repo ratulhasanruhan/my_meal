@@ -11,8 +11,8 @@ class MealRateAdmin(admin.ModelAdmin):
 
 @admin.register(MealPlan)
 class MealPlanAdmin(admin.ModelAdmin):
-    list_display = ("slot", "scope_label", "quantity", "effective_from")
-    list_filter = ("slot", "weekday")
+    list_display = ("slot", "quantity", "effective_from")
+    list_filter = ("slot",)
 
 
 @admin.register(MealEntry)
