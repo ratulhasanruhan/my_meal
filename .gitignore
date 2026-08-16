@@ -10,6 +10,7 @@ db.sqlite3
 
 staticfiles/
 staticfiles_build/
+.build_venv/
 
 .vercel
 .DS_Store

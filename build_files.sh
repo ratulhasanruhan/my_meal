@@ -2,7 +2,10 @@
 # Vercel static build: collect static assets into staticfiles_build/static.
 set -e
 
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
+# Vercel's build image ships a uv-managed Python that refuses a plain
+# `pip install` (PEP 668), so install into an isolated virtualenv instead.
+python3 -m venv .build_venv
+.build_venv/bin/python -m pip install --upgrade pip
+.build_venv/bin/python -m pip install -r requirements.txt
 
-python3 manage.py collectstatic --noinput --clear
+.build_venv/bin/python manage.py collectstatic --noinput --clear
