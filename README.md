@@ -104,6 +104,28 @@ Create your login user by running this locally with production `DATABASE_URL` se
 python manage.py bootstrap_admin
 ```
 
+## Troubleshooting a deploy
+
+`/healthz/` reports what the running instance is actually configured with — the
+database host and port, connection timings, the time zone, and today's date. It
+never prints the password. `/healthz/?trace=/report/` renders that page in the
+same process and returns the traceback if it fails, which is the only way to see
+an error that would otherwise kill the function silently.
+
+**Empty environment variables are the trap here.** A dashboard entry saved with
+no value arrives as `""`, not as missing, and `os.environ.get(name, default)`
+does not fall back for it. An empty `SECRET_KEY` or `TIME_ZONE` took this
+deployment down twice. All variables now go through `env()` in
+[config/settings.py](config/settings.py), which treats blank as unset — but if a
+setting looks ignored, check that its value is actually there.
+
+Two more that cost time:
+
+- **Vercel does not redeploy when you save a variable.** Deployments → ⋯ →
+  Redeploy, or nothing changes.
+- **Don't paste secrets into the bulk `.env` box** — `#` starts a comment, so a
+  key containing one is silently truncated.
+
 ## Notes
 
 - Meals are stored only when taken — a missing row means skipped.
