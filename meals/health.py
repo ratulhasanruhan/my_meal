@@ -25,7 +25,18 @@ def healthz(request):
         f"options       {db.get('OPTIONS')}",
         f"conn_max_age  {db.get('CONN_MAX_AGE')}",
         f"debug         {settings.DEBUG}",
+        f"time_zone     {settings.TIME_ZONE}",
     ]
+    if getattr(settings, "TIME_ZONE_ERROR", ""):
+        lines.append(f"time_zone!    {settings.TIME_ZONE_ERROR}")
+
+    started = time.monotonic()
+    try:
+        from django.utils import timezone
+
+        lines.append(f"localdate     {timezone.localdate()} ({time.monotonic() - started:.2f}s)")
+    except Exception as exc:
+        lines.append(f"localdate     FAILED {type(exc).__name__}: {str(exc).strip()[:120]}")
 
     for attempt in (1, 2):
         started = time.monotonic()

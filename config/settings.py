@@ -2,6 +2,7 @@
 
 import os
 import sys
+import zoneinfo
 from pathlib import Path
 
 import dj_database_url
@@ -12,14 +13,31 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
-DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-# `os.environ.get(key, default)` returns "" when the variable exists but is
-# empty, and Django then dies with a bare "SECRET_KEY must not be empty".
-# Treat empty as unset, and say so plainly rather than shipping a known key.
-SECRET_KEY = os.environ.get("SECRET_KEY", "").strip()
+def env(name, default=""):
+    """Read an environment variable, treating empty or blank as unset.
+
+    `os.environ.get(name, default)` only falls back when the variable is
+    absent. A dashboard that stores a key with no value hands back "", which
+    then reaches Django as a real setting — an empty SECRET_KEY, or a
+    TIME_ZONE that ZoneInfo rejects. Both took this deployment down with no
+    usable traceback, so every variable is read through here instead.
+    """
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    value = value.strip()
+    return value if value else default
+
+
+# True only for an explicit "true"; anything else, including blank, is False.
+DEBUG = env("DEBUG", "False").lower() == "true"
+
+BUILDING = "collectstatic" in sys.argv
+
+SECRET_KEY = env("SECRET_KEY")
 if not SECRET_KEY:
-    if DEBUG or "collectstatic" in sys.argv:
+    if DEBUG or BUILDING:
         SECRET_KEY = "django-insecure-dev-key-change-me"
     else:
         raise ImproperlyConfigured(
@@ -31,8 +49,13 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = ["*"]
 
 CSRF_TRUSTED_ORIGINS = ["https://*.vercel.app"]
-if os.environ.get("SITE_URL"):
-    CSRF_TRUSTED_ORIGINS.append(os.environ["SITE_URL"])
+SITE_URL = env("SITE_URL")
+if SITE_URL:
+    # Django rejects a trusted origin without a scheme, and it rejects it while
+    # handling a POST, so a bare hostname here breaks only form submissions.
+    if "://" not in SITE_URL:
+        SITE_URL = f"https://{SITE_URL}"
+    CSRF_TRUSTED_ORIGINS.append(SITE_URL.rstrip("/"))
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -78,7 +101,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Supabase Postgres in production; SQLite locally when no URL is configured.
 # POSTGRES_URL is what Vercel's Supabase integration injects, so accept it as a
 # fallback — but DATABASE_URL wins, since it is the one we document.
-DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
+DATABASE_URL = env("DATABASE_URL") or env("POSTGRES_URL")
 if DATABASE_URL:
     DATABASES = {
         "default": dj_database_url.parse(
@@ -123,7 +146,21 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = os.environ.get("TIME_ZONE", "Asia/Dhaka")
+
+# Every view starts with timezone.localdate(), so an unusable TIME_ZONE breaks
+# the whole site — and it breaks the debug page too, which formats dates, so
+# the error recurses until the process dies with nothing logged. Validate it
+# here and fall back rather than let that happen; TIME_ZONE_ERROR surfaces the
+# bad value on /healthz/.
+DEFAULT_TIME_ZONE = "Asia/Dhaka"
+TIME_ZONE = env("TIME_ZONE", DEFAULT_TIME_ZONE)
+TIME_ZONE_ERROR = ""
+try:
+    zoneinfo.ZoneInfo(TIME_ZONE)
+except Exception as exc:
+    TIME_ZONE_ERROR = f"{TIME_ZONE!r} is not a valid IANA time zone ({exc}); using {DEFAULT_TIME_ZONE}"
+    TIME_ZONE = DEFAULT_TIME_ZONE
+
 USE_I18N = True
 USE_TZ = True
 
@@ -146,7 +183,7 @@ LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
 
 # Currency symbol shown across the UI.
-CURRENCY_SYMBOL = os.environ.get("CURRENCY_SYMBOL", "৳")
+CURRENCY_SYMBOL = env("CURRENCY_SYMBOL", "৳")
 
 # Vercel terminates TLS in front of the app, so trust its forwarded scheme.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
