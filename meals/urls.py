@@ -1,9 +1,10 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from . import views
+from . import health, views
 
 urlpatterns = [
+    path("healthz/", health.healthz, name="healthz"),
     path("", views.dashboard, name="dashboard"),
     path("report/", views.report, name="report"),
     path("analytics/", views.analytics, name="analytics"),

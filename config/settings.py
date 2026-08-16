@@ -91,6 +91,9 @@ if DATABASE_URL:
     # IPv6-only) leaves the connection hanging until the platform kills the
     # function — which logs no traceback at all. Fail fast and say why instead.
     DATABASES["default"].setdefault("OPTIONS", {}).setdefault("connect_timeout", 8)
+    # Belongs on the database, not at module level — Supabase's transaction
+    # pooler cannot hold a server-side cursor open across statements.
+    DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 elif DEBUG:
     DATABASES = {
         "default": {
@@ -111,10 +114,6 @@ else:
         "POSTGRES_* and SUPABASE_* variables but not DATABASE_URL. "
         "Or set DEBUG=True to use local SQLite."
     )
-
-# Supabase's transaction pooler cannot hold server-side cursors across
-# statements, so Django must not open them.
-DISABLE_SERVER_SIDE_CURSORS = True
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
