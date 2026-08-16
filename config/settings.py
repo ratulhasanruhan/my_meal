@@ -1,9 +1,11 @@
 """Django settings for the My Meal tracker."""
 
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -61,8 +63,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Supabase Postgres in production; SQLite locally when DATABASE_URL is unset.
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# Supabase Postgres in production; SQLite locally when no URL is configured.
+# POSTGRES_URL is what Vercel's Supabase integration injects, so accept it as a
+# fallback — but DATABASE_URL wins, since it is the one we document.
+DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
 if DATABASE_URL:
     DATABASES = {
         "default": dj_database_url.parse(
@@ -71,13 +75,30 @@ if DATABASE_URL:
             ssl_require=True,
         )
     }
-else:
+elif DEBUG:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
+elif "collectstatic" in sys.argv:
+    # The Vercel build step collects static files without a database.
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
+else:
+    # Falling back to SQLite in production would "work" until the first write,
+    # then fail with a read-only-database error on a serverless filesystem.
+    # Fail here instead, where the cause is obvious.
+    raise ImproperlyConfigured(
+        "No database configured. Set DATABASE_URL to the Supabase transaction "
+        "pooler URL (port 6543) — note that Vercel's Supabase integration adds "
+        "POSTGRES_* and SUPABASE_* variables but not DATABASE_URL. "
+        "Or set DEBUG=True to use local SQLite."
+    )
+
+# Supabase's transaction pooler cannot hold server-side cursors across
+# statements, so Django must not open them.
+DISABLE_SERVER_SIDE_CURSORS = True
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
