@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import MealEntry, MealRate, Payment
+from .models import MealEntry, MealPlan, MealRate, Payment
 
 
 @admin.register(MealRate)
@@ -9,9 +9,15 @@ class MealRateAdmin(admin.ModelAdmin):
     ordering = ("-effective_from",)
 
 
+@admin.register(MealPlan)
+class MealPlanAdmin(admin.ModelAdmin):
+    list_display = ("slot", "scope_label", "quantity", "effective_from")
+    list_filter = ("slot", "weekday")
+
+
 @admin.register(MealEntry)
 class MealEntryAdmin(admin.ModelAdmin):
-    list_display = ("date", "slot", "price", "note")
+    list_display = ("date", "slot", "quantity", "note")
     list_filter = ("slot", "date")
     date_hierarchy = "date"
 

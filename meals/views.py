@@ -1,65 +1,52 @@
 import calendar
 import json
-from collections import OrderedDict
-from datetime import date, timedelta
-from decimal import Decimal
+from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Sum
-from django.db.models.functions import TruncMonth
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .forms import MealRateForm, PaymentForm
-from .models import MealEntry, MealRate, Payment, Slot
+from . import services
+from .forms import MealPlanForm, MealRateForm, PaymentForm
+from .models import MealEntry, MealPlan, MealRate, Payment, Slot
 
 MONTH_NAMES = list(calendar.month_name)
+MAX_QUANTITY = 20
 
 
 def _today():
     return timezone.localdate()
 
 
-def _month_bounds(year, month):
-    first = date(year, month, 1)
-    last = date(year, month, calendar.monthrange(year, month)[1])
-    return first, last
-
-
-def _shift_month(year, month, delta):
-    index = (year * 12 + (month - 1)) + delta
-    return index // 12, index % 12 + 1
-
-
-def _decimal(value):
-    return Decimal(value or 0)
-
-
-@login_required
-def dashboard(request):
-    today = _today()
+def _requested_month(request, today):
     try:
         year = int(request.GET.get("y", today.year))
         month = int(request.GET.get("m", today.month))
         date(year, month, 1)
     except (ValueError, TypeError):
-        year, month = today.year, today.month
+        return today.year, today.month
+    return year, month
 
-    first, last = _month_bounds(year, month)
 
-    entries = MealEntry.objects.filter(date__range=(first, last))
-    taken = {(e.date, e.slot): e for e in entries}
+@login_required
+def dashboard(request):
+    today = _today()
+    year, month = _requested_month(request, today)
 
+    summary = services.month_summary(year, month, today)
+    ledger = services.month_ledger(year, month, today)
+    resolver = summary["resolver"]
+
+    by_date = {d["date"]: d for d in summary["days"]}
     cal = calendar.Calendar(firstweekday=6)  # weeks start on Sunday
     weeks = []
     for week in cal.monthdatescalendar(year, month):
         row = []
         for day in week:
-            lunch = taken.get((day, Slot.LUNCH))
-            dinner = taken.get((day, Slot.DINNER))
+            info = by_date.get(day)
             row.append(
                 {
                     "date": day,
@@ -67,202 +54,192 @@ def dashboard(request):
                     "in_month": day.month == month,
                     "is_today": day == today,
                     "is_future": day > today,
-                    "lunch": lunch is not None,
-                    "dinner": dinner is not None,
-                    "cost": (lunch.price if lunch else 0) + (dinner.price if dinner else 0),
+                    "lunch": info["lunch"] if info else 0,
+                    "dinner": info["dinner"] if info else 0,
+                    "cost": info["cost"] if info else 0,
+                    "overridden": info["overridden"] if info else False,
                 }
             )
         weeks.append(row)
 
-    lunch_count = sum(1 for e in entries if e.slot == Slot.LUNCH)
-    dinner_count = sum(1 for e in entries if e.slot == Slot.DINNER)
-    total_meals = lunch_count + dinner_count
-    total_cost = sum((e.price for e in entries), Decimal("0"))
-    active_days = len({e.date for e in entries})
+    prev_y, prev_m = services.shift_month(year, month, -1)
+    next_y, next_m = services.shift_month(year, month, 1)
 
-    days_elapsed = min((today - first).days + 1, (last - first).days + 1) if today >= first else 0
-    days_in_month = (last - first).days + 1
-    if days_elapsed > 0 and today <= last:
-        projected = (total_cost / days_elapsed) * days_in_month
-    else:
-        projected = total_cost
-
-    prev_y, prev_m = _shift_month(year, month, -1)
-    next_y, next_m = _shift_month(year, month, 1)
-
-    context = {
-        "year": year,
-        "month": month,
-        "month_label": f"{MONTH_NAMES[month]} {year}",
-        "weeks": weeks,
-        "weekday_labels": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-        "prev_url": f"?y={prev_y}&m={prev_m}",
-        "next_url": f"?y={next_y}&m={next_m}",
-        "is_current_month": (year, month) == (today.year, today.month),
-        "stats": {
-            "total_meals": total_meals,
-            "lunch_count": lunch_count,
-            "dinner_count": dinner_count,
-            "total_cost": total_cost,
-            "active_days": active_days,
-            "avg_per_day": (total_cost / active_days) if active_days else Decimal("0"),
-            "projected": projected,
+    return render(
+        request,
+        "meals/dashboard.html",
+        {
+            "year": year,
+            "month": month,
+            "month_label": f"{MONTH_NAMES[month]} {year}",
+            "weeks": weeks,
+            "weekday_labels": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+            "prev_url": f"?y={prev_y}&m={prev_m}",
+            "next_url": f"?y={next_y}&m={next_m}",
+            "is_current_month": (year, month) == (today.year, today.month),
+            "summary": summary,
+            "ledger": ledger,
+            "current_rate": MealRate.price_on(today),
+            "today": today,
+            "today_lunch": resolver.quantity(today, Slot.LUNCH) if today <= summary["last"] and today >= summary["first"] else 0,
+            "today_dinner": resolver.quantity(today, Slot.DINNER) if today <= summary["last"] and today >= summary["first"] else 0,
+            "today_weekday_name": today.strftime("%A"),
+            "today_weekday": today.weekday(),
+            "has_plan": services.tracking_start() is not None,
+            "max_quantity": MAX_QUANTITY,
         },
-        "current_rate": MealRate.price_on(today),
-        "today": today,
-        "today_lunch": MealEntry.objects.filter(date=today, slot=Slot.LUNCH).exists(),
-        "today_dinner": MealEntry.objects.filter(date=today, slot=Slot.DINNER).exists(),
-    }
-    return render(request, "meals/dashboard.html", context)
+    )
 
 
 @login_required
 @require_POST
-def toggle_meal(request):
-    """Flip a single meal slot on/off. Returns the new state plus month totals."""
+def set_meal(request):
+    """Set a slot's quantity, either for one day or as a standing rule.
+
+    Body: {date, slot, quantity, scope} where scope is
+    "once" | "onward" | "weekday".
+    """
     try:
         payload = json.loads(request.body or "{}")
         day = date.fromisoformat(payload["date"])
         slot = payload["slot"]
+        quantity = int(payload["quantity"])
+        scope = payload.get("scope", "once")
     except (ValueError, KeyError, TypeError):
         return JsonResponse({"error": "Bad request"}, status=400)
 
     if slot not in Slot.values:
         return JsonResponse({"error": "Unknown slot"}, status=400)
-
-    if day > _today():
+    if not 0 <= quantity <= MAX_QUANTITY:
+        return JsonResponse({"error": f"Quantity must be 0–{MAX_QUANTITY}"}, status=400)
+    if scope not in {"once", "onward", "weekday"}:
+        return JsonResponse({"error": "Unknown scope"}, status=400)
+    if scope == "once" and day > _today():
         return JsonResponse({"error": "Cannot log a meal in the future"}, status=400)
 
-    entry = MealEntry.objects.filter(date=day, slot=slot).first()
-    if entry:
-        entry.delete()
-        active = False
+    if scope == "once":
+        MealEntry.objects.update_or_create(
+            date=day, slot=slot, defaults={"quantity": quantity}
+        )
     else:
-        MealEntry.objects.create(date=day, slot=slot, price=MealRate.price_on(day))
-        active = True
+        weekday = day.weekday() if scope == "weekday" else None
+        services.set_plan_from(day, slot, quantity, weekday)
 
-    first, last = _month_bounds(day.year, day.month)
-    month_entries = MealEntry.objects.filter(date__range=(first, last))
-    totals = month_entries.aggregate(cost=Sum("price"), count=Count("id"))
+    today = _today()
+    summary = services.month_summary(day.year, day.month, today)
+    ledger = services.month_ledger(day.year, day.month, today)
+    resolver = summary["resolver"]
 
     return JsonResponse(
         {
-            "active": active,
             "date": day.isoformat(),
             "slot": slot,
-            "month_cost": float(_decimal(totals["cost"])),
-            "month_meals": totals["count"] or 0,
-            "day_cost": float(
-                _decimal(
-                    month_entries.filter(date=day).aggregate(c=Sum("price"))["c"]
-                )
-            ),
+            "scope": scope,
+            "quantity": resolver.quantity(day, slot),
+            "day_cost": float(resolver.day_cost(day)),
+            "month_cost": float(summary["cost"]),
+            "month_meals": summary["total_meals"],
+            "month_due": float(ledger["closing"]),
+            "days": [
+                {
+                    "date": d["date"].isoformat(),
+                    "lunch": d["lunch"],
+                    "dinner": d["dinner"],
+                    "cost": float(d["cost"]),
+                }
+                for d in summary["days"]
+            ],
         }
+    )
+
+
+@login_required
+def report(request):
+    today = _today()
+    year, month = _requested_month(request, today)
+
+    summary = services.month_summary(year, month, today)
+    ledger = services.month_ledger(year, month, today)
+
+    taken_days = [d for d in summary["days"] if d["counted"] and d["meals"]]
+    skipped = [d for d in summary["days"] if d["counted"] and not d["meals"]]
+
+    # Contiguous runs of days with meals, and the gaps between them.
+    runs = []
+    for day in taken_days:
+        if runs and (day["date"] - runs[-1][-1]["date"]).days == 1:
+            runs[-1].append(day)
+        else:
+            runs.append([day])
+
+    gaps = []
+    for earlier, later in zip(runs, runs[1:]):
+        gaps.append(
+            {
+                "start": earlier[-1]["date"],
+                "end": later[0]["date"],
+                "days": (later[0]["date"] - earlier[-1]["date"]).days - 1,
+            }
+        )
+
+    prev_y, prev_m = services.shift_month(year, month, -1)
+    next_y, next_m = services.shift_month(year, month, 1)
+
+    return render(
+        request,
+        "meals/report.html",
+        {
+            "year": year,
+            "month": month,
+            "month_label": f"{MONTH_NAMES[month]} {year}",
+            "prev_url": f"?y={prev_y}&m={prev_m}",
+            "next_url": f"?y={next_y}&m={next_m}",
+            "is_current_month": (year, month) == (today.year, today.month),
+            "summary": summary,
+            "ledger": ledger,
+            "runs": [{"start": r[0]["date"], "end": r[-1]["date"], "days": len(r)} for r in runs],
+            "gaps": gaps,
+            "skipped": skipped,
+            "taken_days": taken_days,
+            "rate": MealRate.price_on(summary["last"]),
+            "today": today,
+        },
     )
 
 
 @login_required
 def analytics(request):
     today = _today()
-    entries = MealEntry.objects.all()
+    stats = services.lifetime_stats(today)
 
-    if not entries.exists():
+    if stats.get("empty"):
         return render(request, "meals/analytics.html", {"empty": True})
 
-    # --- 12-month trend -------------------------------------------------
-    start_month = date(*_shift_month(today.year, today.month, -11), 1)
-    monthly_rows = (
-        entries.filter(date__gte=start_month)
-        .annotate(bucket=TruncMonth("date"))
-        .values("bucket")
-        .annotate(cost=Sum("price"), meals=Count("id"))
-        .order_by("bucket")
+    trend = services.monthly_trend(12, today)
+    max_cost = max((float(t["cost"]) for t in trend), default=0) or 1
+    busiest = max(trend, key=lambda t: t["cost"])
+
+    return render(
+        request,
+        "meals/analytics.html",
+        {
+            "empty": False,
+            "stats": stats,
+            "trend": trend,
+            "max_cost": max_cost,
+            "busiest_month": busiest if busiest["cost"] else None,
+            "weekday": services.weekday_breakdown(today),
+            "balance_abs": abs(stats["balance"]),
+        },
     )
-    by_month = {row["bucket"]: row for row in monthly_rows}
-
-    trend = []
-    y, m = start_month.year, start_month.month
-    for _ in range(12):
-        key = date(y, m, 1)
-        row = by_month.get(key)
-        trend.append(
-            {
-                "label": f"{calendar.month_abbr[m]}",
-                "full_label": f"{calendar.month_abbr[m]} {y}",
-                "cost": float(_decimal(row["cost"])) if row else 0.0,
-                "meals": row["meals"] if row else 0,
-            }
-        )
-        y, m = _shift_month(y, m, 1)
-
-    max_cost = max((t["cost"] for t in trend), default=0) or 1
-
-    # --- weekday pattern ------------------------------------------------
-    weekday_counts = OrderedDict((d, 0) for d in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"])
-    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    for entry in entries:
-        weekday_counts[labels[entry.date.weekday()]] += 1
-    max_weekday = max(weekday_counts.values()) or 1
-    weekday = [
-        {"label": k, "count": v, "pct": round(v / max_weekday * 100)}
-        for k, v in weekday_counts.items()
-    ]
-
-    # --- slot split -----------------------------------------------------
-    slot_rows = entries.values("slot").annotate(count=Count("id"), cost=Sum("price"))
-    slot_map = {r["slot"]: r for r in slot_rows}
-    lunch = slot_map.get(Slot.LUNCH, {"count": 0, "cost": 0})
-    dinner = slot_map.get(Slot.DINNER, {"count": 0, "cost": 0})
-    slot_total = (lunch["count"] or 0) + (dinner["count"] or 0) or 1
-
-    # --- streaks --------------------------------------------------------
-    days_with_meals = sorted({e.date for e in entries})
-    best_streak = current_streak = 1
-    for prev, curr in zip(days_with_meals, days_with_meals[1:]):
-        current_streak = current_streak + 1 if (curr - prev).days == 1 else 1
-        best_streak = max(best_streak, current_streak)
-
-    running_streak = 0
-    cursor = today
-    day_set = set(days_with_meals)
-    while cursor in day_set:
-        running_streak += 1
-        cursor -= timedelta(days=1)
-
-    # --- money ----------------------------------------------------------
-    lifetime_cost = _decimal(entries.aggregate(c=Sum("price"))["c"])
-    paid = _decimal(Payment.objects.aggregate(c=Sum("amount"))["c"])
-    first_day = days_with_meals[0]
-    span_days = (today - first_day).days + 1
-
-    context = {
-        "empty": False,
-        "trend": trend,
-        "max_cost": max_cost,
-        "weekday": weekday,
-        "lunch_count": lunch["count"] or 0,
-        "dinner_count": dinner["count"] or 0,
-        "lunch_pct": round((lunch["count"] or 0) / slot_total * 100),
-        "dinner_pct": round((dinner["count"] or 0) / slot_total * 100),
-        "best_streak": best_streak,
-        "running_streak": running_streak,
-        "lifetime_cost": lifetime_cost,
-        "lifetime_meals": entries.count(),
-        "paid": paid,
-        "balance": paid - lifetime_cost,
-        "balance_abs": abs(paid - lifetime_cost),
-        "tracking_since": first_day,
-        "daily_avg": lifetime_cost / span_days if span_days else Decimal("0"),
-        "skip_days": span_days - len(days_with_meals),
-        "busiest_month": max(trend, key=lambda t: t["cost"]) if trend else None,
-    }
-    return render(request, "meals/analytics.html", context)
 
 
 @login_required
 def settings_view(request):
+    today = _today()
     rate_form = MealRateForm()
-    payment_form = PaymentForm(initial={"date": _today()})
+    payment_form = PaymentForm(initial={"date": today})
+    plan_form = MealPlanForm(initial={"effective_from": today, "quantity": 1})
 
     if request.method == "POST":
         if "save_rate" in request.POST:
@@ -270,6 +247,15 @@ def settings_view(request):
             if rate_form.is_valid():
                 rate_form.save()
                 messages.success(request, "Meal rate updated.")
+                return redirect("settings")
+        elif "save_plan" in request.POST:
+            plan_form = MealPlanForm(request.POST)
+            if plan_form.is_valid():
+                data = plan_form.cleaned_data
+                services.set_plan_from(
+                    data["effective_from"], data["slot"], data["quantity"], data["weekday"]
+                )
+                messages.success(request, "Meal plan updated.")
                 return redirect("settings")
         elif "save_payment" in request.POST:
             payment_form = PaymentForm(request.POST)
@@ -281,13 +267,17 @@ def settings_view(request):
             MealRate.objects.filter(pk=request.POST.get("delete_rate")).delete()
             messages.success(request, "Rate removed.")
             return redirect("settings")
+        elif "delete_plan" in request.POST:
+            MealPlan.objects.filter(pk=request.POST.get("delete_plan")).delete()
+            messages.success(request, "Plan rule removed.")
+            return redirect("settings")
         elif "delete_payment" in request.POST:
             Payment.objects.filter(pk=request.POST.get("delete_payment")).delete()
             messages.success(request, "Payment removed.")
             return redirect("settings")
 
-    lifetime_cost = _decimal(MealEntry.objects.aggregate(c=Sum("price"))["c"])
-    paid = _decimal(Payment.objects.aggregate(c=Sum("amount"))["c"])
+    stats = services.lifetime_stats(today)
+    balance = stats["balance"] if not stats.get("empty") else services.ZERO
 
     return render(
         request,
@@ -295,12 +285,15 @@ def settings_view(request):
         {
             "rate_form": rate_form,
             "payment_form": payment_form,
+            "plan_form": plan_form,
             "rates": MealRate.objects.all(),
+            "plans": MealPlan.objects.all(),
             "payments": Payment.objects.all()[:20],
-            "current_rate": MealRate.price_on(_today()),
-            "lifetime_cost": lifetime_cost,
-            "paid": paid,
-            "balance": paid - lifetime_cost,
-            "balance_abs": abs(paid - lifetime_cost),
+            "current_rate": MealRate.price_on(today),
+            "lifetime_cost": services.ZERO if stats.get("empty") else stats["cost"],
+            "paid": services.ZERO if stats.get("empty") else stats["paid"],
+            "balance": balance,
+            "balance_abs": abs(balance),
+            "has_plan": services.tracking_start() is not None,
         },
     )

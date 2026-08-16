@@ -3,40 +3,68 @@
 {% block title %}Dashboard · {{ APP_NAME }}{% endblock %}
 
 {% block content %}
-<div data-toggle-url="{% url 'toggle_meal' %}" data-currency="{{ CURRENCY }}">
+<div data-set-meal-url="{% url 'set_meal' %}" data-currency="{{ CURRENCY }}" data-max-qty="{{ max_quantity }}">
   {% csrf_token %}
 
   <div class="page-head">
     <h1 class="page-title">{{ month_label }}</h1>
     <p class="page-sub">
-      {% if is_current_month %}Tap today's meals below, or pick any day on the calendar.
+      {% if not has_plan %}Set up your meal plan to get started.
+      {% elif is_current_month %}Running on your plan — only tell it about the exceptions.
       {% else %}Reviewing a past month.{% endif %}
     </p>
   </div>
 
+  {% if not has_plan %}
+    <section class="card callout">
+      <div>
+        <h2 class="card__title">Set your meal plan first</h2>
+        <p class="card__sub">
+          Tell it how many meals you normally take and from which date. After that it
+          keeps counting on its own — you only step in when you skip a meal or bring a guest.
+        </p>
+      </div>
+      <a class="btn" href="{% url 'settings' %}">Set up plan</a>
+    </section>
+  {% endif %}
+
   <!-- hero: the one number this page leads with -->
   <section class="hero">
-    <p class="hero__label">Spent this month</p>
-    <p class="hero__value"><span class="cur">{{ CURRENCY }}</span><span data-month-cost>{{ stats.total_cost|floatformat:0 }}</span></p>
+    <p class="hero__label">This month's meals</p>
+    <p class="hero__value"><span class="cur">{{ CURRENCY }}</span><span data-month-cost>{{ summary.cost|floatformat:0 }}</span></p>
     <div class="hero__meta">
-      <span><b data-month-meals>{{ stats.total_meals }}</b> meals</span>
-      <span><b>{{ stats.active_days }}</b> days with a meal</span>
-      {% if is_current_month %}<span>Projected <b>{{ CURRENCY }}{{ stats.projected|floatformat:0 }}</b></span>{% endif %}
+      <span><b data-month-meals>{{ summary.total_meals }}</b> meals</span>
+      {% if summary.guest_meals %}<span><b>{{ summary.guest_meals }}</b> for guests</span>{% endif %}
+      {% if is_current_month %}<span>Projected <b>{{ CURRENCY }}{{ summary.projected|floatformat:0 }}</b></span>{% endif %}
+    </div>
+
+    <div class="hero__ledger">
+      <span class="ledger-part">
+        {% if ledger.opening > 0 %}Carried over <b>{{ CURRENCY }}{{ ledger.opening|floatformat:0 }}</b> due
+        {% elif ledger.opening < 0 %}Carried over <b>{{ CURRENCY }}{{ ledger.opening|floatformat:0|cut:"-" }}</b> advance
+        {% else %}Nothing carried over{% endif %}
+      </span>
+      <span class="ledger-part">Paid <b>{{ CURRENCY }}{{ ledger.paid|floatformat:0 }}</b></span>
+      <span class="ledger-total {% if ledger.closing > 0 %}is-due{% elif ledger.closing < 0 %}is-credit{% endif %}">
+        {% if ledger.closing > 0 %}Due now {{ CURRENCY }}<span data-month-due>{{ ledger.closing|floatformat:0 }}</span>
+        {% elif ledger.closing < 0 %}In advance {{ CURRENCY }}{{ ledger.closing|floatformat:0|cut:"-" }}
+        {% else %}Settled up{% endif %}
+      </span>
     </div>
   </section>
 
   <div class="stats">
     <div class="stat">
       <p class="stat__label">Lunches</p>
-      <p class="stat__value">{{ stats.lunch_count }}</p>
+      <p class="stat__value">{{ summary.lunch_count }}</p>
     </div>
     <div class="stat">
       <p class="stat__label">Dinners</p>
-      <p class="stat__value">{{ stats.dinner_count }}</p>
+      <p class="stat__value">{{ summary.dinner_count }}</p>
     </div>
     <div class="stat">
-      <p class="stat__label">Avg / active day</p>
-      <p class="stat__value">{{ CURRENCY }}{{ stats.avg_per_day|floatformat:0 }}</p>
+      <p class="stat__label">Days skipped</p>
+      <p class="stat__value">{{ summary.skipped_days }}</p>
     </div>
     <div class="stat">
       <p class="stat__label">Current rate</p>
@@ -45,16 +73,22 @@
     </div>
   </div>
 
-  {% if is_current_month %}
-    <section class="card mt-16 today">
-      <div>
-        <h2 class="card__title">Today · {{ today|date:"D, j M" }}</h2>
-        <p class="card__sub">Which meals did you take?</p>
+  {% if is_current_month and has_plan %}
+    <section class="card mt-16">
+      <div class="flex-between">
+        <div>
+          <h2 class="card__title">Today · {{ today|date:"D, j M" }}</h2>
+          <p class="card__sub">Already counted from your plan — change it only if today differs.</p>
+        </div>
       </div>
-      <div class="today__slots">
-        {% include "meals/_slot_toggle.html" with slot="lunch" name="Lunch" date=today active=today_lunch disabled=False %}
-        {% include "meals/_slot_toggle.html" with slot="dinner" name="Dinner" date=today active=today_dinner disabled=False %}
+      <div class="slot-list mt-16">
+        {% include "meals/_slot_control.html" with slot="lunch" name="Lunch" date=today qty=today_lunch %}
+        {% include "meals/_slot_control.html" with slot="dinner" name="Dinner" date=today qty=today_dinner %}
       </div>
+      <button type="button" class="btn btn--ghost btn--block mt-16"
+              data-open-sheet="{{ today|date:'Y-m-d' }}">
+        Change this going forward…
+      </button>
     </section>
   {% endif %}
 
@@ -62,7 +96,7 @@
     <div class="cal-head">
       <div>
         <h2 class="card__title">Calendar</h2>
-        <p class="card__sub">Tap any day to edit it</p>
+        <p class="card__sub">Tap a day to adjust it</p>
       </div>
       <div class="cal-nav">
         <a class="icon-btn" href="{{ prev_url }}" aria-label="Previous month">
@@ -82,10 +116,12 @@
       {% for week in weeks %}
         {% for day in week %}
           <button type="button"
-                  class="cal-day{% if not day.in_month %} cal-day--muted{% endif %}{% if day.is_today %} cal-day--today{% endif %}{% if day.is_future %} cal-day--future{% endif %}"
+                  class="cal-day{% if not day.in_month %} cal-day--muted{% endif %}{% if day.is_today %} cal-day--today{% endif %}{% if day.is_future %} cal-day--future{% endif %}{% if day.overridden %} cal-day--edited{% endif %}"
                   data-date="{{ day.date|date:'Y-m-d' }}"
                   data-label="{{ day.date|date:'l, j F Y' }}"
-                  {% if day.is_future %}disabled{% endif %}
+                  data-weekday-name="{{ day.date|date:'l' }}"
+                  data-lunch="{{ day.lunch }}"
+                  data-dinner="{{ day.dinner }}"
                   aria-label="{{ day.date|date:'l, j F' }}">
             <span class="cal-day__num">{{ day.day }}</span>
             <span class="cal-day__dots" aria-hidden="true">
@@ -99,9 +135,10 @@
     </div>
 
     <div class="cal-legend">
-      <span class="legend-item"><span class="legend-key legend-key--1"></span> Lunch taken</span>
-      <span class="legend-item"><span class="legend-key legend-key--2"></span> Dinner taken</span>
+      <span class="legend-item"><span class="legend-key legend-key--1"></span> Lunch</span>
+      <span class="legend-item"><span class="legend-key legend-key--2"></span> Dinner</span>
       <span class="legend-item"><span class="legend-key legend-key--off"></span> Skipped</span>
+      <span class="legend-item"><span class="legend-dot-edited"></span> Changed from plan</span>
     </div>
   </section>
 
@@ -111,11 +148,31 @@
     <div class="sheet__grip" aria-hidden="true"></div>
     <h2 class="sheet__title" id="sheet-title" data-sheet-title></h2>
     <p class="sheet__sub" data-sheet-sub></p>
-    <div class="today__slots">
-      {% include "meals/_slot_toggle.html" with slot="lunch" name="Lunch" date=today active=False disabled=False %}
-      {% include "meals/_slot_toggle.html" with slot="dinner" name="Dinner" date=today active=False disabled=False %}
+
+    <div class="slot-list">
+      {% include "meals/_slot_control.html" with slot="lunch" name="Lunch" date=today qty=0 %}
+      {% include "meals/_slot_control.html" with slot="dinner" name="Dinner" date=today qty=0 %}
     </div>
-    <button type="button" class="btn btn--ghost btn--block mt-16" data-close-sheet>Done</button>
+
+    <fieldset class="scope">
+      <legend class="scope__legend">Apply this change to</legend>
+      <div class="scope__options">
+        <label class="scope__opt">
+          <input type="radio" name="scope" value="once" checked>
+          <span><b>Just this day</b><small>A one-off change</small></span>
+        </label>
+        <label class="scope__opt">
+          <input type="radio" name="scope" value="onward">
+          <span><b>Every day from here</b><small>Becomes your new normal</small></span>
+        </label>
+        <label class="scope__opt">
+          <input type="radio" name="scope" value="weekday">
+          <span><b data-scope-weekday>Every week</b><small>Only this weekday, from here on</small></span>
+        </label>
+      </div>
+    </fieldset>
+
+    <button type="button" class="btn btn--block mt-16" data-close-sheet>Done</button>
   </div>
 </div>
 {% endblock %}

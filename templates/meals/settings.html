@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-head">
   <h1 class="page-title">Settings</h1>
-  <p class="page-sub">Meal rate and payments to your catering service.</p>
+  <p class="page-sub">Your standing meal plan, the rate, and payments to the caterer.</p>
 </div>
 
 <div class="stats" style="margin-top:0">
@@ -23,17 +23,82 @@
     <p class="stat__value">{{ CURRENCY }}{{ paid|floatformat:0 }}</p>
   </div>
   <div class="stat">
-    <p class="stat__label">{% if balance < 0 %}You owe{% else %}Credit{% endif %}</p>
-    <p class="stat__value {% if balance < 0 %}stat__value--bad{% else %}stat__value--good{% endif %}">
+    <p class="stat__label">{% if balance > 0 %}You owe{% else %}In advance{% endif %}</p>
+    <p class="stat__value {% if balance > 0 %}stat__value--bad{% else %}stat__value--good{% endif %}">
       {{ CURRENCY }}{{ balance_abs|floatformat:0 }}
     </p>
   </div>
 </div>
 
+<section class="card mt-16">
+  <h2 class="card__title">Meal plan</h2>
+  <p class="card__sub">
+    Your standing rule — how many meals you take by default, from a date onward. Everything
+    runs off this, so you only touch the calendar when a day is different. Leave the weekday
+    as <em>Every day</em> for your normal routine, or pick one weekday to carve out an exception
+    (say, no lunch on Fridays).
+  </p>
+
+  {% if not has_plan %}
+    <div class="notice mt-16">
+      Nothing is being counted yet. Add a rule below — usually Lunch ×1 and Dinner ×1 from
+      the day you joined the service.
+    </div>
+  {% endif %}
+
+  <form method="post" class="mt-16">
+    {% csrf_token %}
+    <div class="form-row form-row--2">
+      <div class="field">
+        <label for="{{ plan_form.slot.id_for_label }}">Meal</label>
+        {{ plan_form.slot }}
+        {{ plan_form.slot.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ plan_form.quantity.id_for_label }}">How many</label>
+        {{ plan_form.quantity }}
+        <p class="helptext">0 means you skip it by default.</p>
+        {{ plan_form.quantity.errors }}
+      </div>
+    </div>
+    <div class="form-row form-row--2">
+      <div class="field">
+        <label for="{{ plan_form.weekday.id_for_label }}">Applies to</label>
+        {{ plan_form.weekday }}
+        {{ plan_form.weekday.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ plan_form.effective_from.id_for_label }}">Starting from</label>
+        {{ plan_form.effective_from }}
+        {{ plan_form.effective_from.errors }}
+      </div>
+    </div>
+    <button class="btn btn--block mt-16" type="submit" name="save_plan" value="1">Save plan rule</button>
+  </form>
+
+  {% if plans %}
+    <h3 class="section-title mt-24">Active rules</h3>
+    <div class="rows">
+      {% for plan in plans %}
+        <div class="row">
+          <div class="row__main">
+            <p class="row__title">{{ plan.get_slot_display }} ×{{ plan.quantity }}</p>
+            <p class="row__sub">{{ plan.scope_label }}, from {{ plan.effective_from|date:"j M Y" }}</p>
+          </div>
+          <form method="post" onsubmit="return confirm('Remove this rule?')">
+            {% csrf_token %}
+            <button class="btn btn--sm btn--danger" type="submit" name="delete_plan" value="{{ plan.pk }}">Remove</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+
 <div class="grid grid--2 mt-16">
   <section class="card">
     <h2 class="card__title">Meal rate</h2>
-    <p class="card__sub">New rates apply from their start date forward — past meals keep the price they were logged at.</p>
+    <p class="card__sub">New rates apply from their start date forward — past months keep the price they were charged at.</p>
 
     <form method="post" class="mt-16">
       {% csrf_token %}
@@ -77,7 +142,7 @@
 
   <section class="card">
     <h2 class="card__title">Payments</h2>
-    <p class="card__sub">Record what you hand over, so dues stay visible.</p>
+    <p class="card__sub">Record what you hand over. Anything left unpaid rolls into next month, and overpayment sits as advance.</p>
 
     <form method="post" class="mt-16">
       {% csrf_token %}

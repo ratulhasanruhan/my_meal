@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}{{ month_label }} report · {{ APP_NAME }}{% endblock %}
+
+{% block content %}
+<div class="page-head flex-between">
+  <div>
+    <h1 class="page-title">{{ month_label }}</h1>
+    <p class="page-sub">
+      Monthly statement{% if is_current_month %} · still running{% endif %}
+    </p>
+  </div>
+  <div class="cal-nav">
+    <a class="icon-btn" href="{{ prev_url }}" aria-label="Previous month">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </a>
+    <a class="icon-btn" href="{{ next_url }}" aria-label="Next month">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+    </a>
+  </div>
+</div>
+
+<section class="hero">
+  <p class="hero__label">
+    {% if ledger.closing > 0 %}You owe after this month
+    {% elif ledger.closing < 0 %}In advance after this month
+    {% else %}Settled up{% endif %}
+  </p>
+  <p class="hero__value">
+    <span class="cur">{{ CURRENCY }}</span>{% if ledger.closing < 0 %}{{ ledger.closing|floatformat:0|cut:"-" }}{% else %}{{ ledger.closing|floatformat:0 }}{% endif %}
+  </p>
+  <div class="hero__meta">
+    <span><b>{{ summary.total_meals }}</b> meals at {{ CURRENCY }}{{ rate|floatformat:0 }}</span>
+    <span><b>{{ summary.active_days }}</b> days eating</span>
+    {% if is_current_month %}<span>Projected close <b>{{ CURRENCY }}{{ ledger.projected_closing|floatformat:0 }}</b></span>{% endif %}
+  </div>
+</section>
+
+<section class="card mt-16">
+  <h2 class="card__title">Statement</h2>
+  <p class="card__sub">Last month's balance rolls into this one.</p>
+
+  <div class="rows mt-16">
+    <div class="row">
+      <div class="row__main">
+        <p class="row__title">
+          {% if ledger.opening > 0 %}Brought forward — unpaid
+          {% elif ledger.opening < 0 %}Brought forward — advance
+          {% else %}Brought forward{% endif %}
+        </p>
+        <p class="row__sub">Balance before {{ summary.first|date:"j M Y" }}</p>
+      </div>
+      <span class="row__value {% if ledger.opening > 0 %}stat__value--bad{% elif ledger.opening < 0 %}stat__value--good{% endif %}">
+        {% if ledger.opening < 0 %}−{% endif %}{{ CURRENCY }}{{ ledger.opening|floatformat:0|cut:"-" }}
+      </span>
+    </div>
+
+    <div class="row">
+      <div class="row__main">
+        <p class="row__title">Meals this month</p>
+        <p class="row__sub">
+          {{ summary.own_meals }} your own{% if summary.guest_meals %} · {{ summary.guest_meals }} guest{% endif %}
+        </p>
+      </div>
+      <span class="row__value">+{{ CURRENCY }}{{ summary.cost|floatformat:0 }}</span>
+    </div>
+
+    <div class="row">
+      <div class="row__main">
+        <p class="row__title">Paid to caterer</p>
+        <p class="row__sub">
+          {% if ledger.payments %}{{ ledger.payments|length }} payment{{ ledger.payments|length|pluralize }}
+          {% else %}Nothing paid yet this month{% endif %}
+        </p>
+      </div>
+      <span class="row__value{% if ledger.paid %} stat__value--good{% endif %}">
+        {% if ledger.paid %}−{% endif %}{{ CURRENCY }}{{ ledger.paid|floatformat:0 }}
+      </span>
+    </div>
+
+    <div class="row row--total">
+      <div class="row__main">
+        <p class="row__title">
+          {% if ledger.closing > 0 %}Still to pay{% elif ledger.closing < 0 %}Credit carried forward{% else %}Settled{% endif %}
+        </p>
+      </div>
+      <span class="row__value {% if ledger.closing > 0 %}stat__value--bad{% elif ledger.closing < 0 %}stat__value--good{% endif %}">
+        {% if ledger.closing < 0 %}−{% endif %}{{ CURRENCY }}{{ ledger.closing|floatformat:0|cut:"-" }}
+      </span>
+    </div>
+  </div>
+
+  {% if ledger.payments %}
+    <h3 class="section-title mt-24">Payments this month</h3>
+    <div class="rows">
+      {% for payment in ledger.payments %}
+        <div class="row">
+          <div class="row__main">
+            <p class="row__title">{{ payment.date|date:"j M" }}</p>
+            {% if payment.note %}<p class="row__sub">{{ payment.note }}</p>{% endif %}
+          </div>
+          <span class="row__value">{{ CURRENCY }}{{ payment.amount|floatformat:0 }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+
+<div class="grid grid--2 mt-16">
+  <section class="card">
+    <h2 class="card__title">Meal breakdown</h2>
+    <p class="card__sub">What made up the bill</p>
+    <div class="rows mt-16">
+      <div class="row">
+        <div class="row__main"><p class="row__title">Lunches</p></div>
+        <span class="row__value">{{ summary.lunch_count }}</span>
+      </div>
+      <div class="row">
+        <div class="row__main"><p class="row__title">Dinners</p></div>
+        <span class="row__value">{{ summary.dinner_count }}</span>
+      </div>
+      <div class="row">
+        <div class="row__main">
+          <p class="row__title">Your own meals</p>
+          <p class="row__sub">{{ CURRENCY }}{{ summary.own_cost|floatformat:0 }}</p>
+        </div>
+        <span class="row__value">{{ summary.own_meals }}</span>
+      </div>
+      <div class="row">
+        <div class="row__main">
+          <p class="row__title">Guest meals</p>
+          <p class="row__sub">{{ CURRENCY }}{{ summary.guest_cost|floatformat:0 }} of the bill</p>
+        </div>
+        <span class="row__value">{{ summary.guest_meals }}</span>
+      </div>
+      <div class="row">
+        <div class="row__main"><p class="row__title">Average per eating day</p></div>
+        <span class="row__value">{{ CURRENCY }}{{ summary.avg_per_active_day|floatformat:0 }}</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="card__title">When you ate</h2>
+    <p class="card__sub">Unbroken runs and the gaps between them</p>
+
+    <div class="rows mt-16">
+      {% for run in runs %}
+        <div class="row">
+          <div class="row__main">
+            <p class="row__title">
+              {{ run.start|date:"j M" }}{% if run.days > 1 %} – {{ run.end|date:"j M" }}{% endif %}
+            </p>
+            <p class="row__sub">{{ run.days }} day{{ run.days|pluralize }} straight</p>
+          </div>
+          <span class="badge">run</span>
+        </div>
+      {% empty %}
+        <p class="muted" style="font-size:13px">No meals recorded this month.</p>
+      {% endfor %}
+    </div>
+
+    {% if gaps %}
+      <h3 class="section-title mt-24">Gaps</h3>
+      <div class="rows">
+        {% for gap in gaps %}
+          <div class="row">
+            <div class="row__main">
+              <p class="row__title">{{ gap.days }} day{{ gap.days|pluralize }} off</p>
+              <p class="row__sub">between {{ gap.start|date:"j M" }} and {{ gap.end|date:"j M" }}</p>
+            </div>
+            <span class="badge badge--muted">gap</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card mt-16">
+  <h2 class="card__title">Day by day</h2>
+  <p class="card__sub">Every day counted this month</p>
+
+  <div class="table-wrap mt-16">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Lunch</th>
+          <th scope="col">Dinner</th>
+          <th scope="col" class="num">Meals</th>
+          <th scope="col" class="num">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for day in summary.days %}
+          {% if day.counted %}
+            <tr{% if not day.meals %} class="is-skipped"{% endif %}>
+              <th scope="row">
+                {{ day.date|date:"j M" }}
+                <span class="muted">{{ day.date|date:"D" }}</span>
+                {% if day.overridden %}<span class="dot-edited" title="Changed from your plan"></span>{% endif %}
+              </th>
+              <td>{% if day.lunch %}{{ day.lunch }}{% else %}—{% endif %}</td>
+              <td>{% if day.dinner %}{{ day.dinner }}{% else %}—{% endif %}</td>
+              <td class="num">{{ day.meals }}</td>
+              <td class="num">{% if day.cost %}{{ CURRENCY }}{{ day.cost|floatformat:0 }}{% else %}—{% endif %}</td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th scope="row">Total</th>
+          <td>{{ summary.lunch_count }}</td>
+          <td>{{ summary.dinner_count }}</td>
+          <td class="num">{{ summary.total_meals }}</td>
+          <td class="num">{{ CURRENCY }}{{ summary.cost|floatformat:0 }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</section>
+{% endblock %}

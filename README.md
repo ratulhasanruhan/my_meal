@@ -1,16 +1,35 @@
 # My Meal
 
-A private meal tracker for a daily catering subscription. Tick off the lunches and
-dinners you actually took, and it works out what you owe.
+A private meal tracker for a daily catering subscription. It runs off a standing
+plan, so it counts your meals on its own — you only step in when a day differs.
 
-- **Dashboard** — a month calendar; tap any day to toggle lunch/dinner. Running
-  month cost, meal counts, and an end-of-month projection.
+- **Dashboard** — month calendar, quantity steppers for today, running cost and
+  what you owe including anything carried over. Tap a day to adjust it;
+  long-press to change it going forward.
+- **Report** — the monthly statement: brought-forward balance, this month's
+  meals, payments, and what's still to pay. Plus guest-meal cost, eating runs,
+  gaps, and a day-by-day table.
 - **Analytics** — 12-month cost trend, weekday pattern, lunch/dinner split,
-  streaks, and paid-vs-owed.
-- **Settings** — the per-meal rate (versioned by date, so past months keep the
-  price they were logged at) and payments to the caterer.
+  streaks and gaps.
+- **Settings** — the meal plan, the per-meal rate, and payments.
 
 Responsive, light/dark, no frontend build step.
+
+## How the counting works
+
+Three layers, in order of precedence:
+
+1. **A one-day override** — you changed that specific day.
+2. **The plan** — a standing rule like "Dinner ×1 every day from 1 July", or a
+   weekday-scoped one like "Lunch ×0 every Friday". The newest applicable rule
+   wins; on the same date, a weekday rule beats an every-day rule.
+3. **Nothing before your plan starts** — turning the app on never back-bills you.
+
+Quantities above 1 are guest meals, and the report prices them separately.
+
+Money works as a running ledger: each month opens with the previous month's
+closing balance, so an unpaid amount rolls forward as due and an overpayment
+sits as advance.
 
 ## Stack
 
@@ -30,8 +49,12 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-Sign in at `/`. Set your meal rate under **Settings** before logging meals —
-entries snapshot the rate in force on their date.
+Sign in at `/`, then under **Settings** set:
+
+1. **The meal rate** — versioned by date, so a later rate hike never rewrites
+   past months.
+2. **The meal plan** — usually Lunch ×1 and Dinner ×1 from the day you joined the
+   service. Nothing is counted until a plan exists.
 
 ## Supabase
 
