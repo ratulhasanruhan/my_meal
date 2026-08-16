@@ -57,11 +57,29 @@ Sign in at `/`, then under **Settings** set:
 
 ## Supabase
 
-1. Supabase → **Project Settings → Database → Connection string → Transaction
-   pooler** (port `6543`, not 5432 — serverless needs the pooler).
-2. Put it in `.env` as `DATABASE_URL`, with your DB password substituted in.
-3. `python manage.py migrate` — run migrations locally against Supabase; Vercel
-   builds don't run them.
+Supabase → **Connect**. Both environments go through the pooler; only the port
+differs:
+
+| Where | Which string | Port |
+|---|---|---|
+| Locally, to run migrations | Session pooler | `5432` |
+| On Vercel | Transaction pooler | `6543` |
+
+Two things that bite:
+
+- **Don't use the direct host** (`db.<ref>.supabase.co`). It is IPv6-only, so on
+  an IPv4 network it fails with `could not translate host name`.
+- **The pooler username is `postgres.<project-ref>`**, not plain `postgres`.
+
+Put the session-pooler URL in `.env` as `DATABASE_URL`, then:
+
+```bash
+python manage.py migrate
+python manage.py bootstrap_admin
+```
+
+Vercel builds never run migrations, so schema changes always go from your
+machine.
 
 ## Deploying to Vercel
 
