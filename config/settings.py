@@ -87,6 +87,10 @@ if DATABASE_URL:
             ssl_require=True,
         )
     }
+    # Without a timeout, an unreachable host (Supabase's direct endpoint is
+    # IPv6-only) leaves the connection hanging until the platform kills the
+    # function — which logs no traceback at all. Fail fast and say why instead.
+    DATABASES["default"].setdefault("OPTIONS", {}).setdefault("connect_timeout", 8)
 elif DEBUG:
     DATABASES = {
         "default": {
