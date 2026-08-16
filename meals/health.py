@@ -7,6 +7,7 @@ the only way to see the live configuration from outside.
 """
 
 import time
+import traceback
 
 from django.conf import settings
 from django.db import connection
@@ -56,5 +57,28 @@ def healthz(request):
         lines.append(f"meals_mealplan {count} rows in {time.monotonic() - started:.2f}s")
     except Exception as exc:
         lines.append(f"meals_mealplan FAILED {type(exc).__name__}: {str(exc).strip()[:160]}")
+
+    # ?trace=/some/path renders that page in this same process, as a logged-in
+    # user, and reports the traceback. A view that dies without one is being
+    # killed by the platform rather than raising.
+    target = request.GET.get("trace")
+    if target:
+        lines.append(f"\n=== rendering {target} ===")
+        started = time.monotonic()
+        try:
+            from django.contrib.auth import get_user_model
+            from django.test import Client
+
+            user = get_user_model().objects.filter(is_superuser=True).first()
+            client = Client()
+            client.force_login(user)
+            response = client.get(target)
+            lines.append(
+                f"status {response.status_code} in {time.monotonic() - started:.2f}s, "
+                f"{len(response.content)} bytes"
+            )
+        except Exception:
+            lines.append(f"raised after {time.monotonic() - started:.2f}s:")
+            lines.append(traceback.format_exc(limit=25))
 
     return HttpResponse("\n".join(lines) + "\n", content_type="text/plain; charset=utf-8")
