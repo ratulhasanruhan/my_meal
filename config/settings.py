@@ -12,9 +12,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-dev-key-change-me")
-
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
+
+# `os.environ.get(key, default)` returns "" when the variable exists but is
+# empty, and Django then dies with a bare "SECRET_KEY must not be empty".
+# Treat empty as unset, and say so plainly rather than shipping a known key.
+SECRET_KEY = os.environ.get("SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    if DEBUG or "collectstatic" in sys.argv:
+        SECRET_KEY = "django-insecure-dev-key-change-me"
+    else:
+        raise ImproperlyConfigured(
+            "SECRET_KEY is empty. Set it to a long random string. If you pasted "
+            "it as a .env block, note that '#' starts a comment — use a key made "
+            "only of letters and digits."
+        )
 
 ALLOWED_HOSTS = ["*"]
 
